@@ -1,0 +1,20 @@
+// SAT - Shape Animation Tool - Shelf Installer
+// Run this script in Maya to add a SAT button to the current shelf.
+
+{
+    string $currentShelf = `tabLayout -q -selectTab $gShelfTopLevel`;
+
+    string $cmd = "import importlib\nimport sat.main\nimport sat.mainWindow\nimport sat.aboutWindow\nimport sat.utils\nimport sat.Qt\nimportlib.reload(sat.Qt)\nimportlib.reload(sat.utils)\nimportlib.reload(sat.mainWindow)\nimportlib.reload(sat.aboutWindow)\nimportlib.reload(sat.main)\n\ntry:\n    win.close()\n    win.deleteLater()\nexcept:\n    pass\n\nwin = sat.main.MainWindow()\nwin.show()\nwin.connectSignals()\nwin.start()\n";
+
+    shelfButton
+        -parent $currentShelf
+        -label "SAT"
+        -annotation "Shape Animation Tool"
+        -image "blendShape.png"
+        -command $cmd
+        -sourceType "python";
+
+    print "// SAT shelf button added to: " ;
+    print $currentShelf ;
+    print "\n" ;
+}

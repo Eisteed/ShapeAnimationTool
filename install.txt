@@ -9,7 +9,7 @@ Now without it will be work also.
 
 Installing:
 1. Drop folder sat in your scripts folder:
-My path is - C:\Users\UserName\Documents\maya\2014-x64\scripts 
+My path is - C:\Users\UserName\Documents\maya\2025\scripts 
 
 2. Create shelf button with action python
 ####
