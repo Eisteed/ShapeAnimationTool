@@ -118,7 +118,10 @@ class Ui_MainWindow(object):
         self.sculpt_btn.setGeometry(QtCore.QRect(5, 0, 206, 51))
         font = QtGui.QFont()
         font.setPointSize(12)
-        font.setWeight(QtGui.QFont.Weight.Normal)
+        try:
+            font.setWeight(QtGui.QFont.Weight.Normal)
+        except (AttributeError, TypeError):
+            font.setWeight(50)
         font.setItalic(False)
         font.setUnderline(False)
         font.setBold(False)

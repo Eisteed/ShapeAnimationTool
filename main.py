@@ -35,7 +35,7 @@ if spec and spec.origin:
 else:
     modulePath = os.path.dirname(os.path.abspath(__file__))
 
-version = '2.0'
+version = '2.1'
 
 def mayaMainWindow():
     mainWindowPtr = omui.MQtUtil.mainWindow()

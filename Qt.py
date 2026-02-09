@@ -70,7 +70,7 @@ def _pyside6():
     """Setup PySide6 (Maya 2025+)"""
     import PySide6
     from PySide6 import QtGui, QtWidgets, QtCore, QtUiTools
-    _remap(QtCore, 'QStringListModel', QtCore.QStringListModel)
+    # QAction is already in QtGui for PySide6, no remap needed
     _add(PySide6, '__binding__', PySide6.__name__)
     _add(PySide6, 'load_ui', lambda fname: QtUiTools.QUiLoader().load(fname))
     _add(PySide6, 'translate', lambda context, sourceText, disambiguation, n: QtCore.QCoreApplication.translate(context, sourceText, disambiguation, n))
@@ -83,7 +83,8 @@ def _pyside2():
     """Setup PySide2 (Maya 2017-2024)"""
     import PySide2
     from PySide2 import QtGui, QtWidgets, QtCore, QtUiTools
-    _remap(QtCore, 'QStringListModel', QtGui.QStringListModel)
+    # QAction lives in QtWidgets in PySide2, add it to QtGui for compatibility
+    QtGui.QAction = QtWidgets.QAction
     _add(PySide2, '__binding__', PySide2.__name__)
     _add(PySide2, 'load_ui', lambda fname: QtUiTools.QUiLoader().load(fname))
     _add(PySide2, 'translate', lambda context, sourceText, disambiguation, n: QtCore.QCoreApplication.translate(context, sourceText, disambiguation, n))
