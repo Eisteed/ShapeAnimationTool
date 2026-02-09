@@ -2,15 +2,16 @@ Shape Animation Tool 2.1
 
 Updated to work with maya 2024 & 2025
 
-''Install:''
+**Install:**
 
-1. Drop folder sat in your scripts folder:
+**1.** Drop folder sat in your scripts folder:
 My path is - C:\Users\UserName\Documents\maya\2025\scripts 
 
-2. Select the shelf you want & drop install.mel to auto add SAT button to it.
+**2.** Select the shelf you want & drop install.mel to auto add SAT button to it.
 
-3. Manual install : Create shelf button with python action 
-####
+**3.** Manual install : Create shelf button with python action 
+
+###
 import importlib
 import sat.main
 import sat.mainWindow
@@ -33,7 +34,7 @@ win = sat.main.MainWindow()
 win.show()
 win.connectSignals()
 win.start()
-####
+###
 
 History:
 
@@ -51,7 +52,6 @@ History:
 
 1.2   - Updated for using with Shapes Brush 1.8 
       - Updated for using in Maya 2017
-
+      
 … (no logs from 1.2 to 2.0)
-
 2.1   - Updated for using in Maya 2024-2026 (eisteed)
