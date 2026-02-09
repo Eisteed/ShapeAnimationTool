@@ -11,15 +11,28 @@ Installing:
 1. Drop folder sat in your scripts folder:
 My path is - C:\Users\UserName\Documents\maya\2025\scripts 
 
-2. Create shelf button with action python
+2. Select the shelf you want & drop install.mel to auto add SAT button to it.
+
+3. Manual install : Create shelf button with python action 
 ####
+import importlib
 import sat.main
-reload(sat.main)
-global win
+import sat.mainWindow
+import sat.aboutWindow
+import sat.utils
+import sat.Qt
+importlib.reload(sat.Qt)
+importlib.reload(sat.utils)
+importlib.reload(sat.mainWindow)
+importlib.reload(sat.aboutWindow)
+importlib.reload(sat.main)
+
 try:
- twin.close()
- twin.deleteLater()
-except: pass
+    win.close()
+    win.deleteLater()
+except:
+    pass
+
 win = sat.main.MainWindow()
 win.show()
 win.connectSignals()
