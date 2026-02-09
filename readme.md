@@ -1,13 +1,9 @@
 Shape Animation Tool 2.1
 
-Tool using PySide, it integraded in Maya from 2014 version, becouse main request is Maya 2014.
-On more oldest Maya Flex will be working, but then you need to install PySide manually.
+Updated to work with maya 2024 & 2025
 
-Also tool can use free plugin ShapesBrush for easy sculpting, which you can download from link - http://www.braverabbit.com/shapesbrush/ and install it.
-Now without it will be work also.
+''Install:''
 
-
-Installing:
 1. Drop folder sat in your scripts folder:
 My path is - C:\Users\UserName\Documents\maya\2025\scripts 
 
