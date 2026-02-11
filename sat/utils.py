@@ -54,7 +54,7 @@ def attrToPy(objAttr):
 def compileUI():
     from pyside6uic import compileUi
     print('!!!')
-    spec = importlib.util.find_spec('sat2')
+    spec = importlib.util.find_spec('sat')
     if spec and spec.origin:
         modulePath = os.path.dirname(os.path.abspath(spec.origin))
     else:

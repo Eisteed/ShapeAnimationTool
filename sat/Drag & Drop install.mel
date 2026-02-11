@@ -4,11 +4,11 @@
 {
     string $currentShelf = `tabLayout -q -selectTab $gShelfTopLevel`;
 
-    string $cmd = "import importlib\nimport sat.main\nimport sat.mainWindow\nimport sat.aboutWindow\nimport sat.utils\nimport sat.Qt\nimportlib.reload(sat.Qt)\nimportlib.reload(sat.utils)\nimportlib.reload(sat.mainWindow)\nimportlib.reload(sat.aboutWindow)\nimportlib.reload(sat.main)\n\ntry:\n    win.close()\n    win.deleteLater()\nexcept:\n    pass\n\nwin = sat.main.MainWindow()\nwin.show()\nwin.connectSignals()\nwin.start()\n";
+    string $cmd = "import sat\nsat.main.MainWindow().show()";
 
     shelfButton
         -parent $currentShelf
-        -label "SAT"
+        -imageOverlayLabel "SAT"
         -annotation "Shape Animation Tool"
         -image "blendShape.png"
         -command $cmd

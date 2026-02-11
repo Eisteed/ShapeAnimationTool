@@ -7,11 +7,11 @@ Updated to work with maya 2024 & 2025
 **1.** Drop folder sat in your scripts folder:
 My path is - C:\Users\UserName\Documents\maya\2025\scripts 
 
-**2.** Select the shelf you want & drop install.mel to auto add SAT button to it.
+**2.** Select the shelf you want drag & drop install.mel to auto add SAT button to it.
 
 **3.** Manual install : Create shelf button with python action 
 
-```
+###
 import importlib
 import sat.main
 import sat.mainWindow
@@ -34,7 +34,7 @@ win = sat.main.MainWindow()
 win.show()
 win.connectSignals()
 win.start()
-```
+###
 
 History:
 
