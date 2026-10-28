@@ -21,7 +21,6 @@ import webbrowser
 import logging
 import inspect
 from . import mainWindow
-from . import aboutWindow
 from . import utils
 
 logger = logging.getLogger(__name__)
@@ -35,29 +34,12 @@ if spec and spec.origin:
 else:
     modulePath = os.path.dirname(os.path.abspath(__file__))
 
-version = '2.1'
+version = '2.2'
 
 def mayaMainWindow():
     mainWindowPtr = omui.MQtUtil.mainWindow()
     return wrapInstance(int(mainWindowPtr), QtWidgets.QWidget)
 
-
-class AboutWindow(QtWidgets.QDialog, aboutWindow.Ui_Dialog):
-
-    def __init__(self, parent=mayaMainWindow()):
-        super(AboutWindow, self).__init__(parent)
-        self.setupUi(self)
-        return
-
-
-try:
-    if not cmds.pluginInfo('SHAPESBrush.mll', query=True, loaded=True):
-        cmds.loadPlugin('SHAPESBrush.mll')
-    mel.eval('source "SHAPESBrush"')
-    useShapesBrush = True
-except:
-    print('Shape Animation Tool not find ShapesBrush plugin')
-    useShapesBrush = False
 
 debug = False
 v = mel.eval('about -version')
@@ -74,6 +56,12 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.bs1 = ''
         self.bs_name = ''
         self.editMode = False
+        self._changingEdit = False
+        self._timeJob = None
+        self._selectionJob = None
+        self._timelineConnection = None
+        self._timelineOriginal = None
+        self._timelineSlider = None
         self.curFrame = 0
         self.keyFrames = []
         self.brushMode = 1
@@ -83,7 +71,8 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     def updateFrame(self, sculptOff=True, *args):
         logger.debug('Start ' + inspect.stack()[0][3])
-        if self.editMode and sculptOff:
+        if (self.editMode and sculptOff and not self._changingEdit
+                and cmds.currentTime(query=True) != self.curFrame):
             self.sculpt_btn.setChecked(False)
         try:
             if self.isVisible():
@@ -115,21 +104,77 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         except:
             pass
 
-        cmds.scriptJob(attributeChange=['sat.time', partial(self.updateFrame, True)])
-        playBackSlider = mel.eval('$tmpVar=$gPlayBackSlider')
-        cmds.timeControl(playBackSlider, edit=True, pressCommand=partial(self.updateFrame, True), releaseCommand=partial(self.updateFrame, True))
+        if self._timeJob is not None and cmds.scriptJob(exists=self._timeJob):
+            cmds.scriptJob(kill=self._timeJob, force=True)
+        self._timeJob = cmds.scriptJob(
+            event=['timeChanged', partial(self.updateFrame, True)])
         self.fillGeoList()
         self.updateUI()
         if self.editMode:
             cmds.currentTime(self.curFrame)
             self.sculpt_btn.setChecked(True)
         self.actionUse_Artisan_Tool.setEnabled(self.editMode)
-        self.actionUse_ShapesBrush_plugin.setEnabled(self.editMode)
         self.actionUse_Components.setEnabled(self.editMode)
         self.actionReset_Shape_to_Default.setEnabled(self.editMode)
         if len(sel) > 0:
             cmds.select(sel)
+        self._timelineSlider = mel.eval('$tmpVar=$gPlayBackSlider')
+        self._timelineConnection = cmds.selectionConnection()
+        if self._selectionJob is not None and cmds.scriptJob(exists=self._selectionJob):
+            cmds.scriptJob(kill=self._selectionJob, force=True)
+        self._selectionJob = cmds.scriptJob(
+            event=['SelectionChanged', self.refreshTimeline])
+        self.refreshTimeline()
         return
+
+    def _colorShapeKeys(self, blendshape):
+        curves = cmds.listConnections(blendshape + '.weight', source=True,
+                                      destination=False, type='animCurve') or []
+        if curves:
+            cmds.keyframe(list(set(curves)), edit=True, tickDrawSpecial=True)
+
+    def _restoreTimeline(self):
+        if self._timelineOriginal is not None:
+            # Avoid replacing another tool's connection if it took ownership.
+            current = cmds.timeControl(self._timelineSlider, query=True,
+                                       mainListConnection=True)
+            if current == self._timelineConnection:
+                cmds.timeControl(self._timelineSlider, edit=True,
+                                 mainListConnection=self._timelineOriginal)
+            self._timelineOriginal = None
+
+    def refreshTimeline(self, *args):
+        if not self._timelineConnection:
+            return
+        selected = cmds.ls(selection=True, objectsOnly=True, long=True) or []
+        transforms = set(selected)
+        for node in selected:
+            transforms.update(cmds.listRelatives(node, parent=True, fullPath=True) or [])
+        targets = []
+        for layer in self.meshes:
+            mesh = layer.rsplit('_LR', 1)[0]
+            paths = set(cmds.ls(mesh, long=True) or [])
+            if self.editMode and layer == self.curLayer and self.bs1:
+                paths.update(cmds.ls(self.bs1, long=True) or [])
+            blendshape = layer + '_satBS'
+            if (paths.intersection(transforms) or blendshape in selected
+                    or any(n.rsplit('|', 1)[-1] == blendshape for n in selected)):
+                if cmds.objExists(blendshape):
+                    targets.append(blendshape)
+        if not targets:
+            self._restoreTimeline()
+            return
+        if self._timelineOriginal is None:
+            self._timelineOriginal = cmds.timeControl(
+                self._timelineSlider, query=True, mainListConnection=True)
+        cmds.selectionConnection(self._timelineConnection, edit=True, clear=True)
+        for node in selected + targets:
+            cmds.selectionConnection(self._timelineConnection, edit=True, select=node)
+        for node in targets:
+            self._colorShapeKeys(node)
+        cmds.timeControl(self._timelineSlider, edit=True,
+                         mainListConnection=self._timelineConnection)
+        cmds.timeControl(self._timelineSlider, edit=True, forceRefresh=True)
 
     def connectSignals(self):
         logger.debug('Start ' + inspect.stack()[0][3])
@@ -144,7 +189,6 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.deleteKey_btn.clicked.connect(self.deleteKey)
         self.sculpt_btn.toggled.connect(self.sculpt)
         self.brush_btn.clicked.connect(self.brush)
-        self.shapesBrush_btn.clicked.connect(self.shapesBrush)
         self.points_btn.clicked.connect(self.points)
         self.resetShape_btn.clicked.connect(self.resetShape)
         self.actionAdd.triggered.connect(self.addMesh)
@@ -159,11 +203,9 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.actionBrush_Tool_Window.triggered.connect(self.showBrushWindow)
         self.actionEdit_Mode_2.triggered.connect(self.scultpMenuOn)
         self.actionUse_Artisan_Tool.triggered.connect(self.brush)
-        self.actionUse_ShapesBrush_plugin.triggered.connect(self.shapesBrush)
         self.actionUse_Components.triggered.connect(self.points)
         self.actionReset_Shape_to_Default.triggered.connect(self.resetShape)
         self.actionHome_Page.triggered.connect(self.homePage)
-        self.actionAbout.triggered.connect(self.about)
         return
 
     def updateUI(self):
@@ -205,6 +247,7 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 pass
 
         self.updateUI()
+        self.refreshTimeline()
         return
 
     def selectMeshInList(self, curr, prev):
@@ -377,6 +420,22 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         return
 
     def sculpt(self, on, *args):
+        if self._changingEdit or (on and self.editMode and self.bs1):
+            return
+        self._changingEdit = True
+        try:
+            self._setEditMode(on)
+        except Exception:
+            if on:
+                self._setEditMode(False)
+            raise
+        finally:
+            self._changingEdit = False
+            blocked = self.sculpt_btn.blockSignals(True)
+            self.sculpt_btn.setChecked(self.editMode)
+            self.sculpt_btn.blockSignals(blocked)
+
+    def _setEditMode(self, on):
         logger.debug('Start Sculpt')
         self.editMode = on
         self.curFrame = cmds.currentTime(query=True)
@@ -390,13 +449,17 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 currentTime = cmds.currentTime(query=True)
                 if currentTime not in self.keyFrames:
                     self.setKey()
-            shapes = cmds.listAttr(self.curLayer + '_satBS.w', m=True)
-            for sh in shapes:
-                v = cmds.getAttr(self.curLayer + '_satBS.' + sh)
-                if v > 0.1:
-                    self.bs1 = sh
-
-            self.bs1 = cmds.duplicate(self.curMesh, n=self.bs1)[0]
+            shapes = cmds.listAttr(self.curLayer + '_satBS.w', m=True) or []
+            target = next((sh for sh in shapes
+                           if cmds.getAttr(self.bs_name + '.' + sh) > 0.1), None)
+            if target is None:
+                raise RuntimeError('No active shape target at the current frame.')
+            target_index = target.split('_')[-1]
+            self.bs1 = cmds.duplicate(
+                self.curMesh, n=self.curMesh.rsplit('|', 1)[-1] + '_temp_shape')[0]
+            if not cmds.objExists('sat.tempMesh'):
+                cmds.addAttr('sat', longName='tempMesh', attributeType='message')
+            cmds.connectAttr(self.bs1 + '.message', 'sat.tempMesh', force=True)
             cmds.setAttr(self.bs1 + '.tx', lock=0)
             cmds.setAttr(self.bs1 + '.ty', lock=0)
             cmds.setAttr(self.bs1 + '.tz', lock=0)
@@ -410,7 +473,7 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             self.fixShapeName(self.bs1)
             par = cmds.listRelatives(self.bs1, p=True)
             if par is not None:
-                cmds.parent(self.bs1, w=True)
+                self.bs1 = cmds.parent(self.bs1, w=True)[0]
             currentPanel = cmds.getPanel(withFocus=1)
             try:
                 state = cmds.isolateSelect(currentPanel, q=1, state=1)
@@ -419,13 +482,12 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             except:
                 pass
 
-            n = self.bs1.split('_')[-1]
-            cmds.connectAttr(self.bs1 + 'Shape.worldMesh[0]', self.bs_name + '.inputTarget[0].inputTargetGroup[%s].inputTargetItem[6000].inputGeomTarget' % n)
+            n = target_index
+            temp_shape = cmds.listRelatives(self.bs1, shapes=True, noIntermediate=True, fullPath=True)[0]
+            cmds.connectAttr(temp_shape + '.worldMesh[0]', self.bs_name + '.inputTarget[0].inputTargetGroup[%s].inputTargetItem[6000].inputGeomTarget' % n)
             cmds.select(self.bs1)
             if self.brushMode == 1:
                 self.brush()
-            elif self.brushMode == 2:
-                self.shapesBrush()
             else:
                 self.setSelectionMode(True)
             self.geo_groupBox.setEnabled(False)
@@ -436,29 +498,20 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             self.sculpt_btn.setStyleSheet('background-color: rgb(0, 80, 40)')
             self.brush_btn.setEnabled(True)
             self.points_btn.setEnabled(True)
-            if useShapesBrush:
-                self.shapesBrush_btn.setEnabled(True)
             self.resetShape_btn.setEnabled(True)
+            self._originalLodVisibility = cmds.getAttr(self.curMesh + '.lodVisibility')
             cmds.setAttr(self.curMesh + '.lodVisibility', False)
             self.actionUse_Artisan_Tool.setEnabled(True)
-            self.actionUse_ShapesBrush_plugin.setEnabled(True)
             self.actionUse_Components.setEnabled(True)
             self.actionReset_Shape_to_Default.setEnabled(True)
         else:
             # Turning off sculpt mode
             if cmds.selectMode(q=True, component=True):
                 self.setSelectionMode()
-            # Find the current active shape target
-            shapes = cmds.listAttr(self.curLayer + '_satBS.w', m=True)
-            if shapes:
-                for sh in shapes:
-                    v = cmds.getAttr(self.curLayer + '_satBS.' + sh)
-                    if v > 0.1:
-                        self.bs1 = sh
-                        break
             # Delete the temporary sculpt mesh
             if self.bs1 and cmds.objExists(self.bs1):
                 cmds.delete(self.bs1)
+            self.bs1 = ''
             mel.eval('SelectTool')
             cmds.select(clear=True)
             if cmds.objExists(self.curMesh):
@@ -473,12 +526,10 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             self.sculpt_btn.setStyleSheet('')
             self.brush_btn.setEnabled(False)
             self.points_btn.setEnabled(False)
-            if useShapesBrush:
-                self.shapesBrush_btn.setEnabled(False)
             self.resetShape_btn.setEnabled(False)
-            cmds.setAttr(self.curMesh + '.lodVisibility', True)
+            if cmds.objExists(self.curMesh):
+                cmds.setAttr(self.curMesh + '.lodVisibility', getattr(self, '_originalLodVisibility', True))
             self.actionUse_Artisan_Tool.setEnabled(False)
-            self.actionUse_ShapesBrush_plugin.setEnabled(False)
             self.actionUse_Components.setEnabled(False)
             self.actionReset_Shape_to_Default.setEnabled(False)
         return
@@ -510,15 +561,7 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.brushMode = 1
         if cmds.selectMode(q=True, component=True):
             self.setSelectionMode()
-        cmds.SculptGeometryTool()
-        return
-
-    def shapesBrush(self):
-        logger.debug('Start ' + inspect.stack()[0][3])
-        self.brushMode = 2
-        if cmds.selectMode(q=True, component=True):
-            self.setSelectionMode()
-        mel.eval('SHAPESBrush')
+        mel.eval('SetMeshGrabTool;')
         return
 
     def points(self):
@@ -538,8 +581,6 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                     for sh in shapes:
                         v = cmds.getAttr(self.curLayer + '_satBS.' + sh)
                         if v > 0.1:
-                            self.bs1 = sh
-                            n = self.bs1.split('_')[-1]
                             cmds.setAttr(self.bs_name + '.envelope', 0)
                             bs0 = cmds.duplicate(self.curMesh, n='shape_init')[0]
                             cmds.setAttr(self.bs_name + '.envelope', 1)
@@ -621,11 +662,17 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 cmds.setKeyframe(self.bs_name + '.' + bs1_name, t=t, v=0)
 
         cmds.setKeyframe(self.bs_name + '.' + bs1_name, v=1)
+        self._colorShapeKeys(self.bs_name)
         cmds.setAttr(self.bs_name + '.' + bs1_name, 1)
-        multNode = cmds.createNode('multDoubleLinear', n=bs1_name + '_mult')
-        cmds.setAttr(multNode + '.input2', -1)
-        cmds.connectAttr(self.bs_name + '.' + bs1_name, multNode + '.input1')
-        cmds.connectAttr(multNode + '.output', self.bs_name + '.' + bs0_name)
+        if 'multDL' in cmds.allNodeTypes():
+            multNode = cmds.createNode('multDL', n=bs1_name + '_mult')
+            input1, input2, output = '.input1', '.input2', '.output'
+        else:
+            multNode = cmds.createNode('multiplyDivide', n=bs1_name + '_mult')
+            input1, input2, output = '.input1X', '.input2X', '.outputX'
+        cmds.setAttr(multNode + input2, -1)
+        cmds.connectAttr(self.bs_name + '.' + bs1_name, multNode + input1)
+        cmds.connectAttr(multNode + output, self.bs_name + '.' + bs0_name)
         self.saveData()
         cmds.select(self.curMesh)
         cmds.select(self.bs_name, add=True)
@@ -756,7 +803,15 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         logger.debug('Start ' + inspect.stack()[0][3])
         self.meshes = utils.attrToPy('sat.meshes')
         self.curLayer = utils.attrToPy('sat.curMesh')
-        self.editMode = utils.attrToPy('sat.sculptMode')
+        # Finish an interrupted session before rebuilding the window. Deleting
+        # the connected target lets Maya retain its edited blendshape data.
+        if cmds.objExists('sat.tempMesh'):
+            for mesh in cmds.listConnections('sat.tempMesh', source=True, destination=False) or []:
+                cmds.delete(mesh)
+            source_mesh = self.curLayer.rsplit('_LR', 1)[0]
+            if cmds.objExists(source_mesh):
+                cmds.setAttr(source_mesh + '.lodVisibility', True)
+        self.editMode = False
         try:
             self.curFrame = utils.attrToPy('sat.currentFrame')
         except:
@@ -787,19 +842,6 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             name = obj.split(':')[1]
         return name
 
-    def about(self):
-        logger.debug('Start ' + inspect.stack()[0][3])
-
-        def aboutClose():
-            aboutWindow.close()
-            return
-
-        aboutWindow = AboutWindow(self)
-        aboutWindow.pushButton.clicked.connect(aboutClose)
-        aboutWindow.label_5.setText('Version ' + version)
-        aboutWindow.show()
-        return
-
     def showBrushWindow(self):
         logger.debug('Start ' + inspect.stack()[0][3])
         mel.eval('toolPropertyWindow -inMainWindow true;')
@@ -807,7 +849,7 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     def homePage(self):
         logger.debug('Start Show HomePage')
-        url = 'http://www.pavelcrow.com/#!sat/zko8h'
+        url = 'https://github.com/Eisteed/ShapeAnimationTool'
         webbrowser.open(url, new=2)
         return
 
@@ -815,4 +857,15 @@ class MainWindow(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         logger.debug('Close ')
         if self.editMode:
             self.sculpt(False)
+        if self._timeJob is not None and cmds.scriptJob(exists=self._timeJob):
+            cmds.scriptJob(kill=self._timeJob, force=True)
+        self._timeJob = None
+        if self._selectionJob is not None and cmds.scriptJob(exists=self._selectionJob):
+            cmds.scriptJob(kill=self._selectionJob, force=True)
+        self._selectionJob = None
+        self._restoreTimeline()
+        if self._timelineConnection:
+            cmds.deleteUI(self._timelineConnection)
+            self._timelineConnection = None
+        super(MainWindow, self).closeEvent(*args, **kwargs)
         return
