@@ -55,3 +55,5 @@ History:
       
 … (no logs from 1.2 to 2.0)
 2.1   - Updated for using in Maya 2024-2026 (eisteed)
+
+2.2   - Fix Edit mode glitch, edit mode temp blendshape named correctly in outliner, modified brush to use maya SetMeshGrabTool by default
