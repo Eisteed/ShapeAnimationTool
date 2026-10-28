@@ -1,6 +1,6 @@
-Shape Animation Tool 2.1
+Shape Animation Tool 2.2
 
-Updated to work with maya 2024 & 2025
+Updated to work with maya 2024, 2025, 2026
 
 **Install:**
 
